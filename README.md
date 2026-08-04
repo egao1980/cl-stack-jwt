@@ -39,6 +39,16 @@ OCI: `ghcr.io/egao1980/cl-systems/cl-stack-jwt:0.1.0`
 
 Algorithms: whatever `jose` supports (HS256/384/512, RS*, PS*, none).
 
+## Publish
+
+Source-only OCI publish is centralized in [`cl-stack-systems`](https://github.com/egao1980/cl-stack-systems)
+(`imports/cl-stack-jwt/qlfile` pin + shared `publish.yml`). Packaging metadata lives in the `.asd`
+(`auto-package-spec`):
+
+```bash
+gh workflow run publish.yml -R egao1980/cl-stack-systems -f import=cl-stack-jwt
+```
+
 ## License
 
 MIT
