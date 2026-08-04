@@ -1,3 +1,7 @@
+;;; Source-only OCI publish for cl-stack-jwt (no native overlays).
+;;; Env: PKG_VERSION OCI_REGISTRY OCI_NAMESPACE GITHUB_ACTOR GITHUB_TOKEN
+;;;      PKG_SOURCE_DIR (default: cwd) SKIP_CATALOG (default true)
+
 (require :asdf)
 (asdf:initialize-source-registry
  '(:source-registry
@@ -44,6 +48,8 @@
                :provides '("cl-stack-jwt")))
        (result (cl-repository-packager/build-matrix:build-package spec)))
   (declare (ignore _))
-  (cl-repository-packager/build-matrix:publish-package
-   result reg :namespace namespace :skip-catalog skip-catalog)
-  (format t "~&Published ~a:~a~%" name version))
+  (format t "~%Publishing ~a:~a (source-only) to ~a/~a~%"
+          name version registry-url namespace)
+  (cl-repository-packager/publisher:publish-package
+   reg namespace version result spec :skip-catalog skip-catalog)
+  (format t "Published ~a/~a/~a:~a~%" registry namespace name version))
