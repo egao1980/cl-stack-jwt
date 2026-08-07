@@ -23,7 +23,9 @@
 
 (call-with-ci-muffles
  (lambda ()
-   (dolist (n '("jose" "rove" "alexandria" "ironclad"))
+   (dolist (n '("crypto-protocol" "secrets-protocol" "crypto-backend-ironclad"
+                "cl-stack-jwt" "jose" "babel" "yason" "cl-base64" "alexandria"
+                "ironclad" "uuid" "rove"))
      (unless (asdf:find-system n nil)
        (ql:quickload n :silent t)))
    (asdf:test-system "cl-stack-jwt")))
