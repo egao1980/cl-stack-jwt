@@ -1,7 +1,8 @@
 (in-package #:cl-stack-jwt)
 
-;;; Thin PyJWT-shaped facade over fukamachi/jose.
-;;; Not an HTTP auth helper — use cl-stack-oauth2 for bearer token flows.
+;;; PyJWT-shaped facade.
+;;; HS256/384/512 → crypto-protocol:hmac (+ secrets constant-time compare).
+;;; Other algorithms → jose (RSA/ECDSA/etc).
 
 (defconstant +unix-universal-offset+ 2208988800
   "Seconds between CL universal-time epoch (1900) and Unix epoch (1970).")
@@ -15,17 +16,113 @@
 (defun unix-time ()
   (universal-time->unix (get-universal-time)))
 
+(defun %b64url-encode (octets)
+  (string-right-trim
+   '(#\=)
+   (map 'string
+        (lambda (c)
+          (case c
+            (#\+ #\-)
+            (#\/ #\_)
+            (t c)))
+        (cl-base64:usb8-array-to-base64-string octets))))
+
+(defun %b64url-decode (string)
+  (let* ((s (map 'string
+                 (lambda (c)
+                   (case c
+                     (#\- #\+)
+                     (#\_ #\/)
+                     (t c)))
+                 string))
+         (pad (case (mod (length s) 4)
+                (2 "==")
+                (3 "=")
+                (t ""))))
+    (cl-base64:base64-string-to-usb8-array (concatenate 'string s pad))))
+
+(defun %json-encode (obj)
+  (with-output-to-string (out)
+    (yason:encode obj out)))
+
+(defun %json-decode (string)
+  (yason:parse string :object-as :alist :json-arrays-as-vectors t))
+
+(defun %hmac-digest (algorithm)
+  (ecase algorithm
+    ((:hs256 :HS256) :sha256)
+    ((:hs384 :HS384) :sha384)
+    ((:hs512 :HS512) :sha512)))
+
+(defun %hmac-alg-name (algorithm)
+  (ecase algorithm
+    ((:hs256 :HS256) "HS256")
+    ((:hs384 :HS384) "HS384")
+    ((:hs512 :HS512) "HS512")))
+
+(defun %hmac-p (algorithm)
+  (member algorithm '(:hs256 :HS256 :hs384 :HS384 :hs512 :HS512)))
+
+(defun %key-octets (key)
+  (etypecase key
+    ((vector (unsigned-byte 8)) key)
+    (string (babel:string-to-octets key :encoding :utf-8))))
+
+(defun %alist-to-hash (alist)
+  (let ((h (make-hash-table :test 'equal)))
+    (dolist (pair alist h)
+      (setf (gethash (car pair) h) (cdr pair)))))
+
+(defun %encode-hs (algorithm key claims headers)
+  (let* ((alg (%hmac-alg-name algorithm))
+         (hdr (%alist-to-hash
+               (append `(("alg" . ,alg) ("typ" . "JWT")) headers)))
+         (payload (%alist-to-hash claims))
+         (h64 (%b64url-encode (babel:string-to-octets (%json-encode hdr) :encoding :utf-8)))
+         (p64 (%b64url-encode (babel:string-to-octets (%json-encode payload) :encoding :utf-8)))
+         (signing-input (format nil "~a.~a" h64 p64))
+         (sig (crypto-protocol:hmac (%key-octets key)
+                                    (babel:string-to-octets signing-input :encoding :utf-8)
+                                    :algorithm (%hmac-digest algorithm))))
+    (format nil "~a.~a" signing-input (%b64url-encode sig))))
+
+(defun %split-token (token)
+  (let ((parts (uiop:split-string token :separator '(#\.))))
+    (unless (= (length parts) 3)
+      (error "invalid JWT: expected 3 segments"))
+    (values (first parts) (second parts) (third parts))))
+
+(defun %decode-hs (algorithm key token)
+  (multiple-value-bind (h64 p64 s64) (%split-token token)
+    (let* ((signing-input (format nil "~a.~a" h64 p64))
+           (expected (crypto-protocol:hmac
+                      (%key-octets key)
+                      (babel:string-to-octets signing-input :encoding :utf-8)
+                      :algorithm (%hmac-digest algorithm)))
+           (got (%b64url-decode s64)))
+      (unless (secrets-protocol:constant-time-equal expected got)
+        (error "JWT signature mismatch"))
+      (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
+              (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
+
 (defun encode (algorithm key claims &key headers)
   "Sign CLAIMS (alist) with ALGORITHM/KEY → compact JWT string."
-  (jose:encode algorithm key claims :headers headers))
+  (if (%hmac-p algorithm)
+      (%encode-hs algorithm key claims headers)
+      (jose:encode algorithm key claims :headers headers)))
 
 (defun decode (algorithm key token)
   "Verify and decode TOKEN → (values claims-alist header-alist)."
-  (jose:decode algorithm key token))
+  (if (%hmac-p algorithm)
+      (%decode-hs algorithm key token)
+      (jose:decode algorithm key token)))
 
 (defun inspect-token (token)
   "Decode without verify → (values claims header signature-octets)."
-  (jose:inspect-token token))
+  (multiple-value-bind (h64 p64 s64) (%split-token token)
+    (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
+            (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))
+            (%b64url-decode s64))))
 
 (defun claims (token &key verify algorithm key)
   "Return claims alist. VERIFY T requires ALGORITHM and KEY."

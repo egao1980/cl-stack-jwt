@@ -1,5 +1,4 @@
 ;;;; Phase 1: install SUT dependency closure via cl-repository-client.
-;;;; No ASDF-load of overlay-sensitive systems — that happens in ci-test.
 
 (setf *debugger-hook*
       (lambda (c h)
@@ -29,7 +28,13 @@
    (cl-repo:ensure-system-dependencies "cl-stack-jwt"
      :also-tests t
      :sources '(("babel" :ql)
-                ("trivial-features" :ql)))))
+                ("yason" :ql)
+                ("cl-base64" :ql)
+                ("alexandria" :ql)
+                ("ironclad" :ql)
+                ("uuid" :ql)
+                ("trivial-features" :ql)
+                ("rove" :ql)))))
 
 (format t "~&; ci: install phase done~%")
 (uiop:quit 0)
