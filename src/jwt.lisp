@@ -147,7 +147,17 @@
 
 (defun expired-p (token &key (leeway 0) verify algorithm key
                           (now (unix-time)))
-  "T if `exp` present and NOW >= exp + LEEWAY (Unix seconds; LEEWAY = clock skew grace)."
-  (let ((exp (claim token "exp" :verify verify :algorithm algorithm :key key)))
+  "T if `exp` present and NOW >= exp + LEEWAY (Unix seconds; LEEWAY = clock skew grace).
+
+   With VERIFY T the signature is still checked (signature errors signal), but
+   jose's own time-claim checks are continued so this predicate — including
+   LEEWAY — stays authoritative for the expiration answer."
+  (let ((exp (if verify
+                 ;; jose:decode CERRORs on exp/nbf before we can inspect them;
+                 ;; invoke its continue restart and decide from the claim.
+                 (handler-bind ((jose/errors:jwt-claims-expired #'continue)
+                                (jose/errors:jwt-claims-not-yet-valid #'continue))
+                   (claim token "exp" :verify t :algorithm algorithm :key key))
+                 (claim token "exp"))))
     (and (numberp exp)
          (>= now (+ exp leeway)))))
