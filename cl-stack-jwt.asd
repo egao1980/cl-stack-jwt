@@ -4,7 +4,7 @@
   :author "egao1980"
   :license "MIT"
   :depends-on ("crypto-protocol" "secrets-protocol" "babel" "yason" "cl-base64" "alexandria" "jose")
-  :properties (:cl-repo (:ci (:sources (("babel" :ql) ("yason" :ql) ("cl-base64" :ql) ("alexandria" :ql) ("ironclad" :ql) ("uuid" :ql) ("trivial-features" :ql) ("rove" :ql)))))
+
   :serial t
   :pathname "src"
   :components ((:file "package")
