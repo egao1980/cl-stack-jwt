@@ -1,8 +1,8 @@
 (in-package #:cl-stack-jwt)
 
 ;;; PyJWT-shaped facade.
-;;; HS256/384/512 → crypto-protocol:hmac (+ secrets constant-time compare).
-;;; Other algorithms → jose (RSA/ECDSA/etc).
+;;; HS* → crypto-protocol:hmac. RS256/PS256/ES256/EdDSA → crypto-protocol:sign.
+;;; Other algorithms → jose (escape hatch; drop next minor).
 
 (defconstant +unix-universal-offset+ 2208988800
   "Seconds between CL universal-time epoch (1900) and Unix epoch (1970).")
@@ -63,6 +63,24 @@
 (defun %hmac-p (algorithm)
   (member algorithm '(:hs256 :HS256 :hs384 :HS384 :hs512 :HS512)))
 
+(defun %crypto-sig-alg (algorithm)
+  "Map JWT alg → crypto-protocol signature keyword, or NIL (jose fallback)."
+  (cond
+    ((member algorithm '(:rs256 :RS256)) :rsa-pkcs1-sha256)
+    ((member algorithm '(:ps256 :PS256)) :rsa-pss-sha256)
+    ((member algorithm '(:es256 :ES256)) :ecdsa-p256-sha256)
+    ((member algorithm '(:eddsa :EdDSA :ed25519 :ED25519)) :ed25519)
+    (t nil)))
+
+(defun %jwt-alg-name (algorithm)
+  (cond
+    ((%hmac-p algorithm) (%hmac-alg-name algorithm))
+    ((member algorithm '(:rs256 :RS256)) "RS256")
+    ((member algorithm '(:ps256 :PS256)) "PS256")
+    ((member algorithm '(:es256 :ES256)) "ES256")
+    ((member algorithm '(:eddsa :EdDSA :ed25519 :ED25519)) "EdDSA")
+    (t (string-upcase (string algorithm)))))
+
 (defun %key-octets (key)
   (etypecase key
     ((vector (unsigned-byte 8)) key)
@@ -105,17 +123,48 @@
       (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
               (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
 
+(defun %encode-crypto (crypto-alg jwt-alg key claims headers)
+  (let* ((alg (%jwt-alg-name jwt-alg))
+         (hdr (%alist-to-hash
+               (append `(("alg" . ,alg) ("typ" . "JWT")) headers)))
+         (payload (%alist-to-hash claims))
+         (h64 (%b64url-encode (babel:string-to-octets (%json-encode hdr) :encoding :utf-8)))
+         (p64 (%b64url-encode (babel:string-to-octets (%json-encode payload) :encoding :utf-8)))
+         (signing-input (format nil "~a.~a" h64 p64))
+         (sig (crypto-protocol:sign
+               (babel:string-to-octets signing-input :encoding :utf-8)
+               :algorithm crypto-alg :key key)))
+    (format nil "~a.~a" signing-input (%b64url-encode sig))))
+
+(defun %decode-crypto (crypto-alg key token)
+  (multiple-value-bind (h64 p64 s64) (%split-token token)
+    (let ((signing-input (format nil "~a.~a" h64 p64))
+          (got (%b64url-decode s64)))
+      (crypto-protocol:verify
+       (babel:string-to-octets signing-input :encoding :utf-8)
+       got :algorithm crypto-alg :key key)
+      (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
+              (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
+
 (defun encode (algorithm key claims &key headers)
   "Sign CLAIMS (alist) with ALGORITHM/KEY → compact JWT string."
-  (if (%hmac-p algorithm)
-      (%encode-hs algorithm key claims headers)
-      (jose:encode algorithm key claims :headers headers)))
+  (cond
+    ((%hmac-p algorithm)
+     (%encode-hs algorithm key claims headers))
+    ((%crypto-sig-alg algorithm)
+     (%encode-crypto (%crypto-sig-alg algorithm) algorithm key claims headers))
+    (t
+     (jose:encode algorithm key claims :headers headers))))
 
 (defun decode (algorithm key token)
   "Verify and decode TOKEN → (values claims-alist header-alist)."
-  (if (%hmac-p algorithm)
-      (%decode-hs algorithm key token)
-      (jose:decode algorithm key token)))
+  (cond
+    ((%hmac-p algorithm)
+     (%decode-hs algorithm key token))
+    ((%crypto-sig-alg algorithm)
+     (%decode-crypto (%crypto-sig-alg algorithm) key token))
+    (t
+     (jose:decode algorithm key token))))
 
 (defun inspect-token (token)
   "Decode without verify → (values claims header signature-octets)."
@@ -153,11 +202,12 @@
    jose's own time-claim checks are continued so this predicate — including
    LEEWAY — stays authoritative for the expiration answer."
   (let ((exp (if verify
-                 ;; jose:decode CERRORs on exp/nbf before we can inspect them;
-                 ;; invoke its continue restart and decide from the claim.
-                 (handler-bind ((jose/errors:jwt-claims-expired #'continue)
-                                (jose/errors:jwt-claims-not-yet-valid #'continue))
-                   (claim token "exp" :verify t :algorithm algorithm :key key))
+                 (if (%crypto-sig-alg algorithm)
+                     (claim token "exp" :verify t :algorithm algorithm :key key)
+                     ;; jose:decode CERRORs on exp/nbf; continue so LEEWAY wins.
+                     (handler-bind ((jose/errors:jwt-claims-expired #'continue)
+                                    (jose/errors:jwt-claims-not-yet-valid #'continue))
+                       (claim token "exp" :verify t :algorithm algorithm :key key)))
                  (claim token "exp"))))
     (and (numberp exp)
          (>= now (+ exp leeway)))))
