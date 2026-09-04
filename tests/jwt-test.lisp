@@ -32,11 +32,34 @@
     (ok (signals (expired-p tok :verify t :algorithm :hs256
                                 :key (ironclad:ascii-string-to-byte-array "wrong-key"))))))
 
-(deftest expired-p-verify-jose
-  "jose-backed algs: continue jose's exp/nbf cerrors so the predicate answers (#6)."
+(deftest expired-p-verify-rs256
   (multiple-value-bind (private public)
-      (ironclad:generate-key-pair :rsa :num-bits 2048)
+      (crypto-protocol:generate-key-pair :rsa-pkcs1-sha256)
     (let ((tok (encode :rs256 private `(("sub" . "user") ("exp" . ,(- (unix-time) 10))))))
       (ok (expired-p tok :verify t :algorithm :rs256 :key public))
       (ng (expired-p tok :verify t :algorithm :rs256 :key public :leeway 60))
       (ok (equal "user" (claim tok "sub"))))))
+
+(deftest rs256-roundtrip
+  (multiple-value-bind (sk pk)
+      (crypto-protocol:generate-key-pair :rsa-pkcs1-sha256)
+    (let ((tok (encode :rs256 sk '(("sub" . "rs")))))
+      (multiple-value-bind (c h) (decode :rs256 pk tok)
+        (ok (equal "rs" (cdr (assoc "sub" c :test #'string=))))
+        (ok (equal "RS256" (cdr (assoc "alg" h :test #'string=))))))))
+
+(deftest es256-roundtrip
+  (multiple-value-bind (sk pk)
+      (crypto-protocol:generate-key-pair :ecdsa-p256-sha256)
+    (let ((tok (encode :es256 sk '(("sub" . "es")))))
+      (ok (equal "es" (cdr (assoc "sub" (decode :es256 pk tok) :test #'string=)))))))
+
+(deftest eddsa-roundtrip
+  (multiple-value-bind (sk pk)
+      (crypto-protocol:generate-key-pair :ed25519)
+    (let ((tok (encode :eddsa sk '(("sub" . "ed")))))
+      (ok (equal "ed" (cdr (assoc "sub" (decode :eddsa pk tok) :test #'string=)))))))
+
+(deftest unsupported-algorithm
+  (ok (signals (encode :rs384 #(1) '(("sub" . "x"))) 'error))
+  (ok (signals (decode :none #(1) "a.b.c") 'error)))

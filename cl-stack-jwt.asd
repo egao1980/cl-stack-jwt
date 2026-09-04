@@ -1,9 +1,9 @@
 (defsystem "cl-stack-jwt"
-  :version "0.2.0"
-  :description "JWT encode/decode/inspect — HS* via crypto-protocol:hmac (jose for other algs)"
+  :version "0.3.0"
+  :description "JWT encode/decode/inspect — HS*/RS256/PS256/ES256/EdDSA via crypto-protocol"
   :author "egao1980"
   :license "MIT"
-  :depends-on ("crypto-protocol" "secrets-protocol" "babel" "yason" "cl-base64" "alexandria" "jose")
+  :depends-on ("crypto-protocol" "secrets-protocol" "babel" "yason" "cl-base64")
 
   :serial t
   :pathname "src"

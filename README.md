@@ -2,10 +2,10 @@
 
 PyJWT-shaped JWT encode/decode/inspect.
 
-- **HS256 / HS384 / HS512** → [`crypto-protocol:hmac`](https://github.com/egao1980/crypto-protocol) (load [`crypto-backend-ironclad`](https://github.com/egao1980/crypto-backend-ironclad))
-- Other algorithms → [`jose`](https://github.com/fukamachi/jose)
+- **HS256 / HS384 / HS512** → [`crypto-protocol:hmac`](https://github.com/egao1980/crypto-protocol)
+- **RS256 / PS256 / ES256 / EdDSA** → [`crypto-protocol:sign`](https://github.com/egao1980/crypto-protocol) / `verify`
 
-Package: `cl-stack-jwt` (nick `stack-jwt`). **OCI: 0.2.0.**
+Package: `cl-stack-jwt` (nick `stack-jwt`). **OCI: 0.3.0.**
 
 Not an HTTP auth helper — bearer get/refresh/401 →
 [`cl-stack-oauth2`](https://github.com/egao1980/cl-stack-oauth2).
@@ -13,8 +13,8 @@ Not an HTTP auth helper — bearer get/refresh/401 →
 ## Install
 
 ```lisp
-(cl-repo:load-system "crypto-backend-ironclad" :version "0.1.1")
-(cl-repo:load-system "cl-stack-jwt" :version "0.2.0")
+(cl-repo:load-system "crypto-backend-ironclad" :version "0.2.0")
+(cl-repo:load-system "cl-stack-jwt" :version "0.3.0")
 ```
 
 ## Usage
