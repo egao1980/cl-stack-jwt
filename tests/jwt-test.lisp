@@ -59,3 +59,7 @@
       (crypto-protocol:generate-key-pair :ed25519)
     (let ((tok (encode :eddsa sk '(("sub" . "ed")))))
       (ok (equal "ed" (cdr (assoc "sub" (decode :eddsa pk tok) :test #'string=)))))))
+
+(deftest unsupported-algorithm
+  (ok (signals (encode :rs384 #(1) '(("sub" . "x"))) 'error))
+  (ok (signals (decode :none #(1) "a.b.c") 'error)))

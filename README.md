@@ -4,7 +4,6 @@ PyJWT-shaped JWT encode/decode/inspect.
 
 - **HS256 / HS384 / HS512** → [`crypto-protocol:hmac`](https://github.com/egao1980/crypto-protocol)
 - **RS256 / PS256 / ES256 / EdDSA** → [`crypto-protocol:sign`](https://github.com/egao1980/crypto-protocol) / `verify`
-- Other algorithms → [`jose`](https://github.com/fukamachi/jose) (escape hatch)
 
 Package: `cl-stack-jwt` (nick `stack-jwt`). **OCI: 0.3.0.**
 

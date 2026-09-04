@@ -2,7 +2,6 @@
 
 ;;; PyJWT-shaped facade.
 ;;; HS* → crypto-protocol:hmac. RS256/PS256/ES256/EdDSA → crypto-protocol:sign.
-;;; Other algorithms → jose (escape hatch; drop next minor).
 
 (defconstant +unix-universal-offset+ 2208988800
   "Seconds between CL universal-time epoch (1900) and Unix epoch (1970).")
@@ -64,7 +63,7 @@
   (member algorithm '(:hs256 :HS256 :hs384 :HS384 :hs512 :HS512)))
 
 (defun %crypto-sig-alg (algorithm)
-  "Map JWT alg → crypto-protocol signature keyword, or NIL (jose fallback)."
+  "Map JWT alg → crypto-protocol signature keyword, or NIL."
   (cond
     ((member algorithm '(:rs256 :RS256)) :rsa-pkcs1-sha256)
     ((member algorithm '(:ps256 :PS256)) :rsa-pss-sha256)
@@ -146,6 +145,10 @@
       (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
               (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
 
+(defun %unsupported-algorithm (algorithm)
+  (error "unsupported JWT algorithm ~S (HS256/384/512, RS256, PS256, ES256, EdDSA)"
+         algorithm))
+
 (defun encode (algorithm key claims &key headers)
   "Sign CLAIMS (alist) with ALGORITHM/KEY → compact JWT string."
   (cond
@@ -154,7 +157,7 @@
     ((%crypto-sig-alg algorithm)
      (%encode-crypto (%crypto-sig-alg algorithm) algorithm key claims headers))
     (t
-     (jose:encode algorithm key claims :headers headers))))
+     (%unsupported-algorithm algorithm))))
 
 (defun decode (algorithm key token)
   "Verify and decode TOKEN → (values claims-alist header-alist)."
@@ -164,7 +167,7 @@
     ((%crypto-sig-alg algorithm)
      (%decode-crypto (%crypto-sig-alg algorithm) key token))
     (t
-     (jose:decode algorithm key token))))
+     (%unsupported-algorithm algorithm))))
 
 (defun inspect-token (token)
   "Decode without verify → (values claims header signature-octets)."
@@ -197,17 +200,9 @@
 (defun expired-p (token &key (leeway 0) verify algorithm key
                           (now (unix-time)))
   "T if `exp` present and NOW >= exp + LEEWAY (Unix seconds; LEEWAY = clock skew grace).
-
-   With VERIFY T the signature is still checked (signature errors signal), but
-   jose's own time-claim checks are continued so this predicate — including
-   LEEWAY — stays authoritative for the expiration answer."
+   VERIFY T still checks the signature (mismatch signals); exp itself is this predicate."
   (let ((exp (if verify
-                 (if (%crypto-sig-alg algorithm)
-                     (claim token "exp" :verify t :algorithm algorithm :key key)
-                     ;; jose:decode CERRORs on exp/nbf; continue so LEEWAY wins.
-                     (handler-bind ((jose/errors:jwt-claims-expired #'continue)
-                                    (jose/errors:jwt-claims-not-yet-valid #'continue))
-                       (claim token "exp" :verify t :algorithm algorithm :key key)))
+                 (claim token "exp" :verify t :algorithm algorithm :key key)
                  (claim token "exp"))))
     (and (numberp exp)
          (>= now (+ exp leeway)))))
