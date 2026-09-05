@@ -1,9 +1,9 @@
 (defsystem "cl-stack-jwt"
-  :version "0.3.2"
+  :version "0.3.3"
   :description "JWT encode/decode/inspect — HS*/RS256/PS256/ES256/EdDSA via crypto-protocol"
   :author "egao1980"
   :license "MIT"
-  :depends-on ("crypto-protocol" "secrets-protocol" "yason" "encoding-protocol")
+  :depends-on ("crypto-protocol" "secrets-protocol" "json-protocol" "json-backend-jzon" "encoding-protocol")
   :serial t
   :pathname "src"
   :components ((:file "package")

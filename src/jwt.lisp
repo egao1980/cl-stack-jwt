@@ -22,11 +22,23 @@
   (encoding-protocol:decode string :encoding :base64url :pad nil))
 
 (defun %json-encode (obj)
-  (with-output-to-string (out)
-    (yason:encode obj out)))
+  (json-protocol:encode obj))
+
+(defun %json->alist (value)
+  (cond
+    ((hash-table-p value)
+     (let ((acc '()))
+       (maphash (lambda (k v)
+                  (push (cons k (%json->alist v)) acc))
+                value)
+       (nreverse acc)))
+    ((and (vectorp value) (not (stringp value)))
+     (map 'vector #'%json->alist value))
+    ((eq value :null) nil)
+    (t value)))
 
 (defun %json-decode (string)
-  (yason:parse string :object-as :alist :json-arrays-as-vectors t))
+  (%json->alist (json-protocol:decode string)))
 
 (defun %hmac-digest (algorithm)
   (ecase algorithm
