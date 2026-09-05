@@ -20,7 +20,7 @@ Not an HTTP auth helper — bearer get/refresh/401 →
 ## Usage
 
 ```lisp
-(defvar *key* (babel:string-to-octets "secret-key-123456" :encoding :utf-8))
+(defvar *key* (encoding-protocol:encode "secret-key-123456"))
 
 (stack-jwt:encode :hs256 *key* '(("sub" . "u") ("exp" . 9999999999)))
 (stack-jwt:decode :hs256 *key* token) ; => claims, header
