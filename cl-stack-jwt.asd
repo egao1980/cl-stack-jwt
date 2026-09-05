@@ -1,10 +1,12 @@
 (defsystem "cl-stack-jwt"
-  :version "0.3.1"
+  :version "0.3.2"
   :description "JWT encode/decode/inspect — HS*/RS256/PS256/ES256/EdDSA via crypto-protocol"
   :author "egao1980"
   :license "MIT"
-  :depends-on ("crypto-protocol" "secrets-protocol" "babel" "yason" "encoding-protocol")
-  :properties (:cl-repo (:ci (:sources (("encoding-protocol" :oci)))))
+  :depends-on ("crypto-protocol" "secrets-protocol" "babel"
+               "json-protocol" "json-backend-jzon" "encoding-protocol")
+  :properties (:cl-repo (:ci (:sources (("encoding-protocol" :oci)
+                                        ("json-protocol" :oci)))))
 
   :serial t
   :pathname "src"
@@ -13,7 +15,7 @@
   :in-order-to ((test-op (test-op "cl-stack-jwt/tests"))))
 
 (defsystem "cl-stack-jwt/tests"
-  :depends-on ("cl-stack-jwt" "crypto-backend-ironclad" "rove" "ironclad")
+  :depends-on ("cl-stack-jwt" "crypto-backend-ironclad" "rove")
   :pathname "tests"
   :serial t
   :components ((:file "package")
