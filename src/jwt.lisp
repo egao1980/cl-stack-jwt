@@ -16,29 +16,10 @@
   (universal-time->unix (get-universal-time)))
 
 (defun %b64url-encode (octets)
-  (string-right-trim
-   '(#\=)
-   (map 'string
-        (lambda (c)
-          (case c
-            (#\+ #\-)
-            (#\/ #\_)
-            (t c)))
-        (cl-base64:usb8-array-to-base64-string octets))))
+  (encoding-protocol:encode octets :encoding :base64url :pad nil))
 
 (defun %b64url-decode (string)
-  (let* ((s (map 'string
-                 (lambda (c)
-                   (case c
-                     (#\- #\+)
-                     (#\_ #\/)
-                     (t c)))
-                 string))
-         (pad (case (mod (length s) 4)
-                (2 "==")
-                (3 "=")
-                (t ""))))
-    (cl-base64:base64-string-to-usb8-array (concatenate 'string s pad))))
+  (encoding-protocol:decode string :encoding :base64url :pad nil))
 
 (defun %json-encode (obj)
   (with-output-to-string (out)
