@@ -22,11 +22,23 @@
   (encoding-protocol:decode string :encoding :base64url :pad nil))
 
 (defun %json-encode (obj)
-  (with-output-to-string (out)
-    (yason:encode obj out)))
+  (json-protocol:encode obj))
+
+(defun %json->alist (value)
+  (cond
+    ((hash-table-p value)
+     (let ((acc '()))
+       (maphash (lambda (k v)
+                  (push (cons k (%json->alist v)) acc))
+                value)
+       (nreverse acc)))
+    ((and (vectorp value) (not (stringp value)))
+     (map 'vector #'%json->alist value))
+    ((eq value :null) nil)
+    (t value)))
 
 (defun %json-decode (string)
-  (yason:parse string :object-as :alist :json-arrays-as-vectors t))
+  (%json->alist (json-protocol:decode string)))
 
 (defun %hmac-digest (algorithm)
   (ecase algorithm
@@ -64,7 +76,7 @@
 (defun %key-octets (key)
   (etypecase key
     ((vector (unsigned-byte 8)) key)
-    (string (babel:string-to-octets key :encoding :utf-8))))
+    (string (encoding-protocol:encode key))))
 
 (defun %alist-to-hash (alist)
   (let ((h (make-hash-table :test 'equal)))
@@ -76,11 +88,11 @@
          (hdr (%alist-to-hash
                (append `(("alg" . ,alg) ("typ" . "JWT")) headers)))
          (payload (%alist-to-hash claims))
-         (h64 (%b64url-encode (babel:string-to-octets (%json-encode hdr) :encoding :utf-8)))
-         (p64 (%b64url-encode (babel:string-to-octets (%json-encode payload) :encoding :utf-8)))
+         (h64 (%b64url-encode (encoding-protocol:encode (%json-encode hdr))))
+         (p64 (%b64url-encode (encoding-protocol:encode (%json-encode payload))))
          (signing-input (format nil "~a.~a" h64 p64))
          (sig (crypto-protocol:hmac (%key-octets key)
-                                    (babel:string-to-octets signing-input :encoding :utf-8)
+                                    (encoding-protocol:encode signing-input)
                                     :algorithm (%hmac-digest algorithm))))
     (format nil "~a.~a" signing-input (%b64url-encode sig))))
 
@@ -95,24 +107,24 @@
     (let* ((signing-input (format nil "~a.~a" h64 p64))
            (expected (crypto-protocol:hmac
                       (%key-octets key)
-                      (babel:string-to-octets signing-input :encoding :utf-8)
+                      (encoding-protocol:encode signing-input)
                       :algorithm (%hmac-digest algorithm)))
            (got (%b64url-decode s64)))
       (unless (secrets-protocol:constant-time-equal expected got)
         (error "JWT signature mismatch"))
-      (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
-              (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
+      (values (%json-decode (encoding-protocol:decode (%b64url-decode p64)))
+              (%json-decode (encoding-protocol:decode (%b64url-decode h64)))))))
 
 (defun %encode-crypto (crypto-alg jwt-alg key claims headers)
   (let* ((alg (%jwt-alg-name jwt-alg))
          (hdr (%alist-to-hash
                (append `(("alg" . ,alg) ("typ" . "JWT")) headers)))
          (payload (%alist-to-hash claims))
-         (h64 (%b64url-encode (babel:string-to-octets (%json-encode hdr) :encoding :utf-8)))
-         (p64 (%b64url-encode (babel:string-to-octets (%json-encode payload) :encoding :utf-8)))
+         (h64 (%b64url-encode (encoding-protocol:encode (%json-encode hdr))))
+         (p64 (%b64url-encode (encoding-protocol:encode (%json-encode payload))))
          (signing-input (format nil "~a.~a" h64 p64))
          (sig (crypto-protocol:sign
-               (babel:string-to-octets signing-input :encoding :utf-8)
+               (encoding-protocol:encode signing-input)
                :algorithm crypto-alg :key key)))
     (format nil "~a.~a" signing-input (%b64url-encode sig))))
 
@@ -121,10 +133,10 @@
     (let ((signing-input (format nil "~a.~a" h64 p64))
           (got (%b64url-decode s64)))
       (crypto-protocol:verify
-       (babel:string-to-octets signing-input :encoding :utf-8)
+       (encoding-protocol:encode signing-input)
        got :algorithm crypto-alg :key key)
-      (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
-              (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))))))
+      (values (%json-decode (encoding-protocol:decode (%b64url-decode p64)))
+              (%json-decode (encoding-protocol:decode (%b64url-decode h64)))))))
 
 (defun %unsupported-algorithm (algorithm)
   (error "unsupported JWT algorithm ~S (HS256/384/512, RS256, PS256, ES256, EdDSA)"
@@ -153,8 +165,8 @@
 (defun inspect-token (token)
   "Decode without verify → (values claims header signature-octets)."
   (multiple-value-bind (h64 p64 s64) (%split-token token)
-    (values (%json-decode (babel:octets-to-string (%b64url-decode p64) :encoding :utf-8))
-            (%json-decode (babel:octets-to-string (%b64url-decode h64) :encoding :utf-8))
+    (values (%json-decode (encoding-protocol:decode (%b64url-decode p64)))
+            (%json-decode (encoding-protocol:decode (%b64url-decode h64)))
             (%b64url-decode s64))))
 
 (defun claims (token &key verify algorithm key)
